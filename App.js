@@ -1,20 +1,32 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import {
+  GestureHandlerRootView,
+  GestureDetector,
+  Gesture,
+} from 'react-native-gesture-handler';
+import { View, Text } from 'react-native';
+import { Svg, Path } from 'react-native-svg';
+import { useState, useCallback } from 'react';
 
 export default function App() {
+  const path = 'M 0 0 L 0 50 L 50 50 L 50 0 Z';
+
+  const [fill, setFill] = useState('red');
+  const switchColor = useCallback(() => setFill(old => old === 'red' ? 'green' : 'red'), [setFill]);
+
+  const tapGesture = Gesture.Tap()
+    .runOnJS(true)
+    .onEnd(switchColor);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <GestureHandlerRootView style={{ flex: 1, paddingTop: 200 }}>
+      <Text>Click on the square to change color</Text>
+      <View style={{ padding: 10, borderWidth: 1, alignSelf: 'flex-start' }}>
+        <Svg width={100} height={100}>
+          <GestureDetector gesture={tapGesture}>
+            <Path d={path} fill={fill} />
+          </GestureDetector>
+        </Svg>
+      </View>
+    </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
