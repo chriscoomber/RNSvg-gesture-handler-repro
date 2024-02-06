@@ -3,8 +3,8 @@ import {
   GestureDetector,
   Gesture,
 } from 'react-native-gesture-handler';
-import { View, Text } from 'react-native';
-import { Svg, Path, Circle, Rect } from 'react-native-svg';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Svg, Rect } from 'react-native-svg';
 import { useState, useCallback, useMemo } from 'react';
 import Animated, {
   useSharedValue,
@@ -12,146 +12,164 @@ import Animated, {
   useAnimatedProps,
   withTiming,
   Easing,
+  SharedValue,
 } from 'react-native-reanimated';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const AnimatedSvg = Animated.createAnimatedComponent(Svg);
 
-function isInRectangle(x: number, y: number): 'red' | 'green' | null {
+function isInRectangle(x: number, y: number): number | null {
   'worklet';
   if (x >= 50 && y >= 50 && x <= 150 && y <= 150) {
-    return 'green';
+    return 1;
   } else if (x >= 0 && y >= 0 && x <= 100 && y <= 100) {
-    return 'red';
+    return 0;
   } else {
     return null;
   }
 }
 
 export default function App() {
-  
-  const [redClicks, setRedClicks] = useState(0);
-  const [greenClicks, setGreenClicks] = useState(0);
-
-  const incrementRedClicks = useCallback(
-    () => setRedClicks((old) => old + 1),
-    [setRedClicks]
-  );
-  const incrementGreenClicks = useCallback(
-    () => setGreenClicks((old) => old + 1),
-    [setGreenClicks]
+  const [log, setLog] = useState('');
+  const appendLog = useCallback(
+    (log: string) => setLog((old) => (old += log)),
+    [setLog]
   );
 
-  const animatedRedOpacity = useSharedValue(1);
-  const animatedGreenOpacity = useSharedValue(1);
+  const [clicks, setClicks] = useState([0, 0]);
 
-  const currentRectangleGestured = useSharedValue<'red' | 'green' | null>(null);
+  const incrementClicks = useCallback(
+    (index: number) =>
+      setClicks((old) => old.map((v, i) => (i === index ? v + 1 : v))),
+    [setClicks]
+  );
+
+  const animatedOpacity = useSharedValue([1, 1]);
+
+  const currentRectangleGestured = useSharedValue<number | null>(null);
   const currentTouchId = useSharedValue<number | null>(null);
 
-  const gesture = useMemo(
-    () =>
-      Gesture.Manual()
-        .onTouchesDown((e, manager) => {
-          const newTouch = e.changedTouches[0];
-          if (newTouch === undefined) {
-            return;
-          }
+  const gesture = useMemo(() => {
+    /** Just for debugging. */
+    function debugLog(text: string) {
+      'worklet';
+      runOnJS(appendLog)(text + '\n');
+    }
 
-          const inRectangle = isInRectangle(newTouch.x, newTouch.y);
-          if (inRectangle === null) {
-            return;
-          }
+    ////
+    // The following three functions should really be given as callbacks to the gesture, e.g. with
+    // Gesture.Manual().onStart((_, success) => { code goes here }).
+    //
+    // However, this doesn't seem to work on native, so we have to put them in the onTouchesX callbacks.
+    // See https://github.com/software-mansion/react-native-gesture-handler/issues/2228 for information.
+    ///
+    function onStart() {
+      'worklet';
+      debugLog('onStart');
+      // Use 'withTiming' for a smoother animation - rather than just instantly changing.
+      animatedOpacity.value = withTiming(
+        animatedOpacity.value.map((o, i) =>
+          i === currentRectangleGestured.value ? 0.4 : o
+        ),
+        {
+          duration: 100,
+          easing: Easing.linear,
+        }
+      );
+    }
 
-          // We only have eyes for this touch.
-          currentTouchId.value = newTouch.id;
-          currentRectangleGestured.value = inRectangle; // 'red' or 'green'
+    function onSuccess() {
+      'worklet';
+      debugLog('onSuccess');
+      runOnJS(incrementClicks)(currentRectangleGestured.value!);
+    }
 
-          // Start the gesture!
-          manager.begin();
-          manager.activate();
-        })
-        .onTouchesUp((e, manager) => {
-          const removedTouch = e.changedTouches.find(
-            (it) => it.id === currentTouchId.value
-          );
-          if (removedTouch === undefined) {
-            return;
-          }
+    function onFinalize() {
+      'worklet';
+      debugLog('onFinalize');
+      // Use 'withTiming' for a smoother animation - rather than just instantly changing.
+      animatedOpacity.value = withTiming(
+        animatedOpacity.value.map((o, i) =>
+          i === currentRectangleGestured.value ? 1 : o
+        ),
+        {
+          duration: 100,
+          easing: Easing.linear,
+        }
+      );
+      currentTouchId.value = null;
+      currentRectangleGestured.value = null;
+    }
 
-          // Check that the touch is still in the original rectangle.
-          const inRectangle = isInRectangle(removedTouch.x, removedTouch.y);
+    return Gesture.Manual()
+      .onTouchesDown((e, manager) => {
+        const newTouch = e.changedTouches[0];
+        if (newTouch === undefined) {
+          return;
+        }
 
-          if (inRectangle === currentRectangleGestured.value) {
-            // End the gesture!
-            manager.end();
-          } else {
-            // Gesture failed!
-            manager.fail();
-          }
-        })
-        .onTouchesCancelled((e, manager) => {
-          const cancelledTouch = e.changedTouches.find(it => it.id === currentTouchId.value);
-          if (cancelledTouch === undefined) {
-            return;
-          }
+        debugLog(`onTouchesDown ${newTouch.id}`);
+        const inRectangle = isInRectangle(newTouch.x, newTouch.y);
+        if (inRectangle === null) {
+          return;
+        }
+
+        // We only have eyes for this touch.
+        currentTouchId.value = newTouch.id;
+        currentRectangleGestured.value = inRectangle; // 'red' or 'green'
+
+        // Start the gesture!
+        onStart();
+        manager.begin();
+        manager.activate();
+      })
+      .onTouchesUp((e, manager) => {
+        const removedTouch = e.changedTouches.find(
+          (it) => it.id === currentTouchId.value
+        );
+        if (removedTouch === undefined) {
+          // Only touches we're not tracking were lifted - ignore.
+          return;
+        }
+
+        debugLog(`onTouchesUp ${removedTouch.id}`);
+        // Our touch was lifted. End or fail the gesture!
+        // Check that the touch is still in the original rectangle.
+        const inRectangle = isInRectangle(removedTouch.x, removedTouch.y);
+
+        if (inRectangle === currentRectangleGestured.value) {
+          // End the gesture!
+
+          onSuccess();
+          onFinalize();
+          manager.end();
+        } else {
+          // Gesture failed!
+          onFinalize();
           manager.fail();
-          
-        })
-        .onStart(() => {
-          if (currentRectangleGestured.value === 'green') {
-            animatedGreenOpacity.value = 0.4;
-          } else if (currentRectangleGestured.value === 'red') {
-            animatedRedOpacity.value = 0.4;
-          }
-        })
-        .onEnd((_, success) => {
-          if (!success) {
-            return;
-          }
-          if (currentRectangleGestured.value === 'green') {
-            runOnJS(incrementGreenClicks)();
-          } else if (currentRectangleGestured.value === 'red') {
-            runOnJS(incrementRedClicks)();
-          }
-        })
-        .onFinalize(() => {
-          if (currentRectangleGestured.value === 'green') {
-            animatedGreenOpacity.value = 1;
-          } else if (currentRectangleGestured.value === 'red') {
-            animatedRedOpacity.value = 1;
-          }
-          currentTouchId.value = null;
-          currentRectangleGestured.value = null;
-        }),
-    [
-      animatedGreenOpacity,
-      animatedRedOpacity,
-      currentRectangleGestured,
-      currentTouchId,
-      incrementGreenClicks,
-      incrementRedClicks,
-    ]
-  );
+        }
+      })
+      .onTouchesCancelled((e, manager) => {
+        const cancelledTouch = e.changedTouches.find(
+          (it) => it.id === currentTouchId.value
+        );
+        if (cancelledTouch === undefined) {
+          // Only touches we're not tracking were cancelled - ignore.
+          return;
+        }
 
-  const greenOpacityProps = useAnimatedProps(
-    () => ({
-      opacity: withTiming(animatedGreenOpacity.value, {
-        duration: 200,
-        easing: Easing.linear,
-      }),
-    }),
-    [animatedGreenOpacity]
-  );
-
-  const redOpacityProps = useAnimatedProps(
-    () => ({
-      opacity: withTiming(animatedRedOpacity.value, {
-        duration: 200,
-        easing: Easing.linear,
-      }),
-    }),
-    [animatedRedOpacity]
-  );
+        debugLog(`onTouchesCanceled ${cancelledTouch.id}`);
+        // Our touch was cancelled. Fail the gesture!
+        onFinalize();
+        manager.fail();
+      });
+  }, [
+    animatedOpacity,
+    currentRectangleGestured,
+    currentTouchId,
+    incrementClicks,
+    appendLog,
+  ]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, paddingTop: 200 }}>
@@ -159,26 +177,64 @@ export default function App() {
       <View style={{ padding: 10, borderWidth: 1, alignSelf: 'flex-start' }}>
         <GestureDetector gesture={gesture}>
           <AnimatedSvg width={200} height={200}>
-            <AnimatedRect
-              width={100}
-              height={100}
-              fill={'red'}
-              animatedProps={redOpacityProps}
+            <ClickableSvgComponent
+              index={0}
+              x={0}
+              y={0}
+              color="red"
+              animatedOpacity={animatedOpacity}
             />
-            <AnimatedRect
-              width={100}
-              height={100}
+            <ClickableSvgComponent
+              index={1}
               x={50}
               y={50}
-              fill={'green'}
-              animatedProps={greenOpacityProps}
+              color="green"
+              animatedOpacity={animatedOpacity}
             />
           </AnimatedSvg>
         </GestureDetector>
       </View>
       <Text>
-        Click count {redClicks} | {greenClicks}
+        Click count {clicks[0]} | {clicks[1]}
       </Text>
+      <TouchableOpacity onPress={() => setLog('')}>
+      <Text style={{backgroundColor: '#0ff1'}}>
+        {'Log (click to clear):\n'}
+        {log}
+      </Text>
+      </TouchableOpacity>
     </GestureHandlerRootView>
+  );
+}
+
+function ClickableSvgComponent({
+  index,
+  x,
+  y,
+  color,
+  animatedOpacity,
+}: {
+  index: number;
+  x: number;
+  y: number;
+  animatedOpacity: SharedValue<number[]>;
+  color: string;
+}) {
+  const opacityProps = useAnimatedProps(
+    () => ({
+      opacity: animatedOpacity.value[index],
+    }),
+    [animatedOpacity]
+  );
+
+  return (
+    <AnimatedRect
+      width={100}
+      height={100}
+      fill={color}
+      animatedProps={opacityProps}
+      x={x}
+      y={y}
+    />
   );
 }
