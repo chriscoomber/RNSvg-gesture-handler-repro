@@ -18,6 +18,7 @@ import Animated, {
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 const AnimatedSvg = Animated.createAnimatedComponent(Svg);
 
+/** Our function to calculate which region is being clicked. Simple for us as we just have two rectangles. */
 function isInRectangle(x: number, y: number): number | null {
   'worklet';
   if (x >= 50 && y >= 50 && x <= 150 && y <= 150) {
@@ -30,27 +31,32 @@ function isInRectangle(x: number, y: number): number | null {
 }
 
 export default function App() {
+  // Just for debugging. Feel free to ignore.
   const [log, setLog] = useState('');
   const appendLog = useCallback(
     (log: string) => setLog((old) => (old += log)),
     [setLog]
   );
-
   const [clicks, setClicks] = useState([0, 0]);
 
+  /** The callback we want to call when a rectangle is clicked. In our case, we just keep a tally of clicks. */
   const incrementClicks = useCallback(
     (index: number) =>
       setClicks((old) => old.map((v, i) => (i === index ? v + 1 : v))),
     [setClicks]
   );
 
+  /** The opacities of each rectangle. Just used to make the gesture feel a bit more responsive. */
   const animatedOpacity = useSharedValue([1, 1]);
 
+  /** Index of the rectangle the gesture is acting upon. 0 or 1 (or null when there's no gesture). */
   const currentRectangleGestured = useSharedValue<number | null>(null);
+  /** Index of the pointer which we're tracking. Almost always 0 (or null when there's no gesture). */
   const currentTouchId = useSharedValue<number | null>(null);
 
+  /** The gesture. We use the manual gesture because the other gestures don't seem to be right. */
   const gesture = useMemo(() => {
-    /** Just for debugging. */
+    /** Just for debugging. Feel free to ignore. */
     function debugLog(text: string) {
       'worklet';
       runOnJS(appendLog)(text + '\n');
@@ -65,7 +71,7 @@ export default function App() {
     ///
     function onStart() {
       'worklet';
-      debugLog('onStart')
+      debugLog('onStart');
 
       // The opacity here might start as [1, 1], and we want to change it to [1, 0.4] over a short duration.
       animatedOpacity.value = withTiming(
@@ -124,7 +130,7 @@ export default function App() {
 
         // We only have eyes for this touch.
         currentTouchId.value = newTouch.id;
-        currentRectangleGestured.value = inRectangle; // 'red' or 'green'
+        currentRectangleGestured.value = inRectangle; // index of the rectangle that's being touched, 0 or 1
 
         // Start the gesture!
         onStart();
@@ -147,7 +153,6 @@ export default function App() {
 
         if (inRectangle === currentRectangleGestured.value) {
           // End the gesture!
-
           onSuccess();
           onFinalize();
           manager.end();
@@ -206,15 +211,19 @@ export default function App() {
         Click count {clicks[0]} | {clicks[1]}
       </Text>
       <TouchableOpacity onPress={() => setLog('')}>
-      <Text style={{backgroundColor: '#0ff1'}}>
-        {'Log (click to clear):\n'}
-        {log}
-      </Text>
+        <Text style={{ backgroundColor: '#0ff1' }}>
+          {'Log (click to clear):\n'}
+          {log}
+        </Text>
       </TouchableOpacity>
     </GestureHandlerRootView>
   );
 }
 
+/**
+ * Each clickable rectangle needs to be its own react component
+ * so that we can use the `useAnimatedProps` hook to sort out the opacity.
+ */
 function ClickableSvgComponent({
   index,
   x,
