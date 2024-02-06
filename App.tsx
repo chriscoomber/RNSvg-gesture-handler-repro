@@ -50,6 +50,9 @@ export default function App() {
   const gesture = useMemo(
     () =>
       Gesture.Tap()
+        // By default the gesture cancels if they hold down for too long.
+        // We don't care about that so give them ages.
+        .maxDuration(10000)
         .onBegin((e) => {
           currentRectangleGestured.value = isInRectangle(e.x, e.y);
 
@@ -63,8 +66,24 @@ export default function App() {
             }
           );
         })
+        .onTouchesMove(e => {
+          const touch = e.changedTouches.find(t => t.id === 0);
+          if ( currentRectangleGestured.value !== null && isInRectangle(touch.x, touch.y) !== currentRectangleGestured.value) {
+            // Moved out of rectangle. Cancel early:
+            animatedOpacity.value = withTiming(
+              animatedOpacity.value.map((o, i) =>
+                i === currentRectangleGestured.value ? 1 : o
+              ),
+              {
+                duration: 100,
+                easing: Easing.linear,
+              }
+            );
+            currentRectangleGestured.value = null;
+          }
+        })
         .onEnd((_, success) => {
-          if (success) {
+          if (success && currentRectangleGestured.value !== null) {
             runOnJS(incrementClicks)(currentRectangleGestured.value!);
           }
         })
