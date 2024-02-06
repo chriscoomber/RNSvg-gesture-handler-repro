@@ -65,12 +65,15 @@ export default function App() {
     ///
     function onStart() {
       'worklet';
-      debugLog('onStart');
-      // Use 'withTiming' for a smoother animation - rather than just instantly changing.
+      debugLog('onStart')
+
+      // The opacity here might start as [1, 1], and we want to change it to [1, 0.4] over a short duration.
       animatedOpacity.value = withTiming(
+        // The new opacity array, e.g. [1, 0.4]
         animatedOpacity.value.map((o, i) =>
           i === currentRectangleGestured.value ? 0.4 : o
         ),
+        // Config to perform this over a short duration
         {
           duration: 100,
           easing: Easing.linear,
@@ -81,22 +84,27 @@ export default function App() {
     function onSuccess() {
       'worklet';
       debugLog('onSuccess');
+
       runOnJS(incrementClicks)(currentRectangleGestured.value!);
     }
 
     function onFinalize() {
       'worklet';
       debugLog('onFinalize');
-      // Use 'withTiming' for a smoother animation - rather than just instantly changing.
+
+      // The opacity here might start as [1, 0.4], and we want to change it to [1, 1] over a short duration.
       animatedOpacity.value = withTiming(
+        // The new opacity array, e.g. [1, 1]
         animatedOpacity.value.map((o, i) =>
           i === currentRectangleGestured.value ? 1 : o
         ),
+        // Config to perform this over a short duration
         {
           duration: 100,
           easing: Easing.linear,
         }
       );
+
       currentTouchId.value = null;
       currentRectangleGestured.value = null;
     }
